@@ -24,7 +24,8 @@ import {
   PlusIcon,
   MinusIcon,
   ChevronLeftIcon,
-  ShoppingBagIcon
+  ShoppingBagIcon,
+  TagIcon // Added for applied coupon UI
 } from "react-native-heroicons/outline";
 
 const { width } = Dimensions.get('window');
@@ -34,23 +35,19 @@ const formatPrice = (val) => `₹${Number(val || 0).toLocaleString('en-IN', { mi
 /* --- SUB-COMPONENT FOR CART ITEM --- */
 const CartItem = ({ item, handleUpdate, removeFromCart, loadingId }) => {
   const minQty = item.product?.minOrderQuantity || 1;
-  // Local state allows smooth typing without immediate API calls
   const [localQty, setLocalQty] = useState(String(item.quantity));
 
-  // Sync local state if quantity changes via Plus/Minus buttons or API refresh
   useEffect(() => {
     setLocalQty(String(item.quantity));
   }, [item.quantity]);
 
   const onManualChange = (text) => {
-    // Only allow numbers
     const cleaned = text.replace(/[^0-9]/g, '');
     setLocalQty(cleaned);
   };
 
   const onFinalizeUpdate = () => {
     const parsed = parseInt(localQty);
-    // If empty or less than MOQ, snap back to minQty
     if (localQty === "" || isNaN(parsed) || parsed < minQty) {
       setLocalQty(String(minQty));
       handleUpdate(item.productId, minQty);
@@ -90,7 +87,6 @@ const CartItem = ({ item, handleUpdate, removeFromCart, loadingId }) => {
                   <MinusIcon size={moderateScale(14)} color={item.quantity <= minQty ? "#cbd5e1" : "#0f172a"} />
                 </TouchableOpacity>
 
-                {/* MANUAL QUANTITY INPUT */}
                 <TextInput
                   style={styles.qtyInput}
                   value={localQty}
@@ -122,8 +118,9 @@ const CartItem = ({ item, handleUpdate, removeFromCart, loadingId }) => {
 
 /* --- MAIN CART SCREEN --- */
 export default function CartScreen({ navigation }) {
-  const { cartItems, cartData, updateQuantity, removeFromCart, applyCoupon, fetchCart, loading } = useCart();
-  const [coupon, setCoupon] = useState("");
+  // Added removeCoupon from context
+  const { cartItems, cartData, updateQuantity, removeFromCart, applyCoupon, removeCoupon, fetchCart, loading } = useCart();
+  const [couponText, setCouponText] = useState("");
   const [loadingId, setLoadingId] = useState(null);
 
   useFocusEffect(
@@ -140,6 +137,12 @@ export default function CartScreen({ navigation }) {
     setLoadingId(id);
     await updateQuantity(id, qty);
     setLoadingId(null);
+  };
+
+  const onApply = async () => {
+    if(!couponText.trim()) return;
+    const success = await applyCoupon(couponText);
+    if(success) setCouponText(""); // Clear only on success
   };
 
   if (!cartItems || cartItems.length === 0) {
@@ -203,7 +206,7 @@ export default function CartScreen({ navigation }) {
 
             {cartData.couponDiscount > 0 && (
               <View style={styles.summaryRow}>
-                <Text style={[styles.label, {color: '#10b981'}]}>Discount</Text>
+                <Text style={[styles.label, {color: '#10b981'}]}>Discount ({cartData.couponCode})</Text>
                 <Text style={[styles.value, {color: '#10b981'}]}>-{formatPrice(cartData.couponDiscount)}</Text>
               </View>
             )}
@@ -213,18 +216,37 @@ export default function CartScreen({ navigation }) {
               <Text style={styles.totalValue}>{formatPrice(cartData.total)}</Text>
             </View>
 
+            {/* INTEGRATED COUPON LOGIC */}
             <View style={styles.couponContainer}>
-              <TextInput
-                style={styles.couponInput}
-                placeholder="Coupon code"
-                value={coupon}
-                onChangeText={setCoupon}
-                autoCapitalize="characters"
-                placeholderTextColor="#94a3b8"
-              />
-              <TouchableOpacity style={styles.applyBtn} onPress={() => applyCoupon(coupon)}>
-                <Text style={styles.applyText}>Apply</Text>
-              </TouchableOpacity>
+              {cartData.couponCode ? (
+                <View style={styles.appliedCouponBox}>
+                  <View style={styles.appliedLeft}>
+                    <TagIcon size={moderateScale(18)} color="#10b981" />
+                    <Text style={styles.appliedText}>{cartData.couponCode} applied!</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => removeCoupon()}>
+                    <TrashIcon size={moderateScale(18)} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <>
+                  <TextInput
+                    style={styles.couponInput}
+                    placeholder="Coupon code"
+                    value={couponText}
+                    onChangeText={(t) => setCouponText(t.toUpperCase())}
+                    autoCapitalize="characters"
+                    placeholderTextColor="#94a3b8"
+                  />
+                  <TouchableOpacity 
+                    style={[styles.applyBtn, !couponText && {opacity: 0.6}]} 
+                    onPress={onApply}
+                    disabled={!couponText}
+                  >
+                    <Text style={styles.applyText}>Apply</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
 
             <TouchableOpacity style={styles.checkoutBtn} onPress={() => navigation.navigate("CheckoutScreen")}>
@@ -250,12 +272,9 @@ const styles = StyleSheet.create({
   moqText: { fontSize: moderateScale(11), color: "#d97706", marginTop: verticalScale(4) },
   actionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: verticalScale(8) },
   priceText: { fontSize: moderateScale(17), fontWeight: "800", color: "#1e3a8a" },
-  
-  // QTY STYLES
   qtyContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "#f8fafc", borderRadius: moderateScale(10), borderWidth: 1, borderColor: "#e2e8f0", minHeight: verticalScale(35), overflow: 'hidden' },
   qtyBtn: { paddingVertical: verticalScale(8), paddingHorizontal: horizontalScale(10) },
   qtyInput: { width: horizontalScale(45), textAlign: "center", fontWeight: "700", fontSize: moderateScale(15), color: '#0f172a', padding: 0, height: '100%' },
-  
   deleteBtn: { justifyContent: "center", paddingLeft: horizontalScale(10) },
   summaryBox: { backgroundColor: "#fff", padding: horizontalScale(22), borderRadius: moderateScale(22), marginTop: verticalScale(15), ...Platform.select({ ios: { shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 10 }, android: { elevation: 3 } }) },
   summaryTitle: { fontSize: moderateScale(19), fontWeight: "800", marginBottom: verticalScale(18), color: '#0f172a' },
@@ -269,13 +288,19 @@ const styles = StyleSheet.create({
   value: { fontSize: moderateScale(15), fontWeight: "700", color: '#0f172a' },
   totalLabel: { fontSize: moderateScale(18), fontWeight: "800", color: '#0f172a' },
   totalValue: { fontSize: moderateScale(22), fontWeight: "900", color: "#1e3a8a" },
+  
+  // COUPON STYLES
   couponContainer: { flexDirection: "row", marginTop: verticalScale(18) },
   couponInput: { flex: 1, borderWidth: 1, borderColor: "#e2e8f0", borderRadius: moderateScale(12), paddingHorizontal: horizontalScale(14), backgroundColor: "#f8fafc", height: verticalScale(48), color: '#0f172a' },
   applyBtn: { backgroundColor: "#0f172a", paddingHorizontal: horizontalScale(18), justifyContent: "center", borderRadius: moderateScale(12), marginLeft: horizontalScale(10) },
   applyText: { color: "#fff", fontWeight: "700", fontSize: moderateScale(14) },
+  appliedCouponBox: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#ecfdf5', paddingHorizontal: horizontalScale(14), paddingVertical: verticalScale(12), borderRadius: moderateScale(12), borderWidth: 1, borderColor: '#10b981' },
+  appliedLeft: { flexDirection: 'row', alignItems: 'center', gap: horizontalScale(8) },
+  appliedText: { color: '#065f46', fontWeight: '700', fontSize: moderateScale(14) },
+
   checkoutBtn: { backgroundColor: "#1e3a8a", paddingVertical: verticalScale(18), borderRadius: moderateScale(16), alignItems: "center", marginTop: verticalScale(18) },
   checkoutText: { color: "#fff", fontSize: moderateScale(16), fontWeight: "800" },
-  taxText: { textAlign: "center", fontSize: moderateScale(12), color: "#64748b", marginTop: verticalScale(8),marginBottom: verticalScale(20) },
+  taxText: { textAlign: "center", fontSize: moderateScale(12), color: "#64748b", marginTop: verticalScale(8), marginBottom: verticalScale(20) },
   emptyWrapper: { flex: 1, justifyContent: "center", alignItems: "center", padding: horizontalScale(20) },
   emptyIconBox: { width: horizontalScale(120), height: horizontalScale(120), borderRadius: horizontalScale(60), backgroundColor: "#fff", justifyContent: "center", alignItems: "center", marginBottom: verticalScale(20), elevation: 2 },
   emptyTitle: { fontSize: moderateScale(22), fontWeight: "800", color: "#1e293b" },

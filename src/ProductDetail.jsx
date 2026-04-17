@@ -121,8 +121,9 @@ const ProductDetail = ({ route, navigation }) => {
       setReviewModalVisible(false);
       resetReviewForm();
       fetchData();
+      Alert.alert("Success", "Review saved successfully!"); 
     } 
-    catch (err) { Alert.alert("ThankYou", "Review saved successfully!"); }
+    catch (err) { Alert.alert("Error", "Could not save review."); }
   };
 
   const handleDeleteReview = (reviewId) => {
@@ -187,144 +188,145 @@ const ProductDetail = ({ route, navigation }) => {
 
   return (
     <SafeScreenWrapper backgroundColor="#F6F9FC">
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        
-        {/* SECTION 1: Gallery */}
-        <View style={styles.galleryCard}>
-          <Image source={{ uri: allImages[selectedIndex] }} style={styles.mainImage} resizeMode="contain" />
-          <View style={styles.thumbnailRow}>
-            {allImages.map((img, index) => (
-              <TouchableOpacity key={index} onPress={() => setSelectedIndex(index)} style={[styles.thumb, selectedIndex === index && styles.activeThumb]}>
-                <Image source={{ uri: img }} style={styles.thumbImage} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        {/* SECTION 2: Name & Price */}
-        <View style={styles.contentSection}>
-          <Text style={styles.name}>{product.name}</Text>
+      <View style={{ flex: 1 }}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
           
-          <View style={styles.controlsRow}>
-            <View style={styles.priceContainer}>
-              <Text style={styles.salePrice}>{formatPrice(product.salePrice)}</Text>
-              {product.baseMRP > product.salePrice && <Text style={styles.mrp}>{formatPrice(product.baseMRP)}</Text>}
-            </View>
-            <TouchableOpacity style={styles.heartBtn} onPress={handleToggleWishlist}>
-              {isWishlisted ? <HeartSolid size={moderateScale(26)} color="#ef4444" /> : <HeartOutline size={moderateScale(26)} color="#64748b" />}
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={[styles.controlsRow, {marginTop: 0}]}>
-            <View style={styles.stepper}>
-              <TouchableOpacity style={styles.stepBtn} onPress={() => updateQty(quantity - 1)}><MinusIcon size={moderateScale(18)} color="#1e293b" /></TouchableOpacity>
-              <TextInput 
-                style={styles.qtyInput}
-                value={inputQty}
-                onChangeText={handleManualQtyChange}
-                onBlur={finalizeQty}
-                onSubmitEditing={finalizeQty}
-                keyboardType="number-pad"
-                selectTextOnFocus
-              />
-              <TouchableOpacity style={styles.stepBtn} onPress={() => updateQty(quantity + 1)}><PlusIcon size={moderateScale(18)} color="#1e293b" /></TouchableOpacity>
-            </View>
-            <View style={styles.moqBadge}>
-                <Text style={styles.moqText}>Min Qty: {product.minOrderQuantity}</Text>
-            </View>
-          </View>
-          <Text style={styles.stockText}>Availability: {product.inventory?.availableStock || 0} in stock</Text>
-        </View>
-
-        {/* SECTION 3: Description */}
-        <View style={styles.cardSection}>
-          <Text style={styles.sectionTitle}>Product Description</Text>
-          <Text style={styles.desc}>{product.description}</Text>
-        </View>
-
-        {/* SECTION 4: Reviews Summary */}
-        <View style={styles.cardSection}>
-            <Text style={styles.sectionTitle}>Customer Reviews</Text>
-            <View style={styles.reviewSummaryRow}>
-                <View style={styles.bigRatingBox}>
-                    <Text style={styles.bigRatingNumber}>{product.averageRating?.toFixed(1) || '0.0'}</Text>
-                    <View style={{flexDirection: 'row', gap: horizontalScale(2), marginVertical: verticalScale(4)}}>
-                        {[...Array(5)].map((_, i) => <StarSolid key={i} size={moderateScale(16)} color={i < product.averageRating ? "#F59E0B" : "#E5E7EB"} />)}
-                    </View>
-                    <Text style={styles.subtext}>{reviews.length} total reviews</Text>
-                </View>
-                <View style={styles.ratingBarsContainer}>
-                    {[5,4,3,2,1].map((star) => {
-                        const count = ratingSum[star];
-                        const percentage = reviews.length > 0 ? (count / reviews.length) : 0;
-                        return (
-                            <View key={star} style={styles.barRow}>
-                                <Text style={styles.barStarNumber}>{star} <StarSolid size={moderateScale(12)} color="#F59E0B" /></Text>
-                                <View style={styles.barBackground}>
-                                    <View style={[styles.barFill, {width: `${percentage * 100}%`}]} />
-                                </View>
-                                <Text style={styles.barCountText}>{count}</Text>
-                            </View>
-                        );
-                    })}
-                </View>
-            </View>
-            <TouchableOpacity style={styles.writeReviewBtn} onPress={() => { resetReviewForm(); setReviewModalVisible(true); }}>
-                <PencilSquareIcon size={moderateScale(20)} color="#fff" />
-                <Text style={styles.writeReviewText}>Write a Review</Text>
-            </TouchableOpacity>
-        </View>
-
-        {/* SECTION 5: Reviews List */}
-        <View style={styles.reviewsListSection}>
-            <View style={styles.controlsRow}>
-                <Text style={styles.smallSectionTitle}>Showing {reviews.length} reviews</Text>
-                <TouchableOpacity style={styles.filterBtn}>
-                    <Text style={{fontSize: moderateScale(13), color: '#1e293b', fontWeight: '500'}}>Most Recent</Text>
-                    <ChevronDownIcon size={moderateScale(16)} color="#1e293b" />
+          {/* SECTION 1: Gallery */}
+          <View style={styles.galleryCard}>
+            <Image source={{ uri: allImages[selectedIndex] }} style={styles.mainImage} resizeMode="contain" />
+            <View style={styles.thumbnailRow}>
+              {allImages.map((img, index) => (
+                <TouchableOpacity key={index} onPress={() => setSelectedIndex(index)} style={[styles.thumb, selectedIndex === index && styles.activeThumb]}>
+                  <Image source={{ uri: img }} style={styles.thumbImage} />
                 </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          {/* SECTION 2: Name & Price */}
+          <View style={styles.contentSection}>
+            <Text style={styles.name}>{product.name}</Text>
+            
+            <View style={styles.controlsRow}>
+              <View style={styles.priceContainer}>
+                <Text style={styles.salePrice}>{formatPrice(product.salePrice)}</Text>
+                {product.baseMRP > product.salePrice && <Text style={styles.mrp}>{formatPrice(product.baseMRP)}</Text>}
+              </View>
+              <TouchableOpacity style={styles.heartBtn} onPress={handleToggleWishlist}>
+                {isWishlisted ? <HeartSolid size={moderateScale(26)} color="#ef4444" /> : <HeartOutline size={moderateScale(26)} color="#64748b" />}
+              </TouchableOpacity>
             </View>
 
-            {reviews.length === 0 ? (
-                <View style={styles.emptyReviews}>
-                    <Text style={{fontSize: moderateScale(14), color: '#94A3B8', textAlign: 'center'}}>No reviews yet.</Text>
-                </View>
-            ) : (
-                reviews.map((rev) => (
-                    <View key={rev._id} style={styles.reviewCard}>
-                        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
-                            <View>
-                                <Text style={styles.reviewerName}>{rev.user?.name || 'Customer'}</Text>
-                                <View style={{flexDirection: 'row', marginVertical: verticalScale(4), gap: horizontalScale(2)}}>
-                                    {[...Array(5)].map((_, i) => <StarSolid key={i} size={moderateScale(12)} color={i < rev.rating ? "#F59E0B" : "#E5E7EB"} />)}
-                                </View>
-                            </View>
-                            <View style={{flexDirection: 'row', gap: horizontalScale(14)}}>
-                                <TouchableOpacity onPress={() => openEditModal(rev)}><PencilSquareIcon size={moderateScale(18)} color="#64748b" /></TouchableOpacity>
-                                <TouchableOpacity onPress={() => handleDeleteReview(rev._id)}><TrashIcon size={moderateScale(18)} color="#ef4444" /></TouchableOpacity>
-                            </View>
-                        </View>
-                        <Text style={styles.reviewTitleText}>{rev.title}</Text>
-                        <Text style={styles.reviewText}>{rev.comment}</Text>
-                        {/* FIXED: Changed <div> to <View> below */}
-                        <View style={styles.dividerLight} />
-                        <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center', marginTop: verticalScale(10)}} onPress={() => handleMarkHelpful(rev._id)}>
-                            <HandThumbUpIcon size={moderateScale(16)} color="#64748b" />
-                            <Text style={{fontSize: moderateScale(12), color: '#64748b', marginLeft: horizontalScale(6)}}>Helpful ({rev.helpfulCount || 0})</Text>
-                        </TouchableOpacity>
-                    </View>
-                ))
-            )}
-        </View>
-      </ScrollView>
+            <View style={styles.divider} />
 
-      {/* FOOTER */}
-      <View style={styles.footer}>
-        <TouchableOpacity style={[styles.cartBtn, isAdding && { opacity: 0.7 }]} onPress={handleAddToCart} disabled={isAdding}>
-          {isAdding ? <ActivityIndicator color="#fff" /> : <><ShoppingCartIcon size={moderateScale(20)} color="#fff" /><Text style={styles.cartText}>Add to Cart</Text></>}
-        </TouchableOpacity>
+            <View style={[styles.controlsRow, {marginTop: 0}]}>
+              <View style={styles.stepper}>
+                <TouchableOpacity style={styles.stepBtn} onPress={() => updateQty(quantity - 1)}><MinusIcon size={moderateScale(18)} color="#1e293b" /></TouchableOpacity>
+                <TextInput 
+                  style={styles.qtyInput}
+                  value={inputQty}
+                  onChangeText={handleManualQtyChange}
+                  onBlur={finalizeQty}
+                  onSubmitEditing={finalizeQty}
+                  keyboardType="number-pad"
+                  selectTextOnFocus
+                />
+                <TouchableOpacity style={styles.stepBtn} onPress={() => updateQty(quantity + 1)}><PlusIcon size={moderateScale(18)} color="#1e293b" /></TouchableOpacity>
+              </View>
+              <View style={styles.moqBadge}>
+                  <Text style={styles.moqText}>Min Qty: {product.minOrderQuantity}</Text>
+              </View>
+            </View>
+            <Text style={styles.stockText}>Availability: {product.inventory?.availableStock || 0} in stock</Text>
+          </View>
+
+          {/* SECTION 3: Description */}
+          <View style={styles.cardSection}>
+            <Text style={styles.sectionTitle}>Product Description</Text>
+            <Text style={styles.desc}>{product.description}</Text>
+          </View>
+
+          {/* SECTION 4: Reviews Summary */}
+          <View style={styles.cardSection}>
+              <Text style={styles.sectionTitle}>Customer Reviews</Text>
+              <View style={styles.reviewSummaryRow}>
+                  <View style={styles.bigRatingBox}>
+                      <Text style={styles.bigRatingNumber}>{product.averageRating?.toFixed(1) || '0.0'}</Text>
+                      <View style={{flexDirection: 'row', gap: horizontalScale(2), marginVertical: verticalScale(4)}}>
+                          {[...Array(5)].map((_, i) => <StarSolid key={i} size={moderateScale(16)} color={i < product.averageRating ? "#F59E0B" : "#E5E7EB"} />)}
+                      </View>
+                      <Text style={styles.subtext}>{reviews.length} total reviews</Text>
+                  </View>
+                  <View style={styles.ratingBarsContainer}>
+                      {[5,4,3,2,1].map((star) => {
+                          const count = ratingSum[star];
+                          const percentage = reviews.length > 0 ? (count / reviews.length) : 0;
+                          return (
+                              <View key={star} style={styles.barRow}>
+                                  <Text style={styles.barStarNumber}>{star} <StarSolid size={moderateScale(12)} color="#F59E0B" /></Text>
+                                  <View style={styles.barBackground}>
+                                      <View style={[styles.barFill, {width: `${percentage * 100}%`}]} />
+                                  </View>
+                                  <Text style={styles.barCountText}>{count}</Text>
+                              </View>
+                          );
+                      })}
+                  </View>
+              </View>
+              <TouchableOpacity style={styles.writeReviewBtn} onPress={() => { resetReviewForm(); setReviewModalVisible(true); }}>
+                  <PencilSquareIcon size={moderateScale(20)} color="#fff" />
+                  <Text style={styles.writeReviewText}>Write a Review</Text>
+              </TouchableOpacity>
+          </View>
+
+          {/* SECTION 5: Reviews List */}
+          <View style={styles.reviewsListSection}>
+              <View style={styles.controlsRow}>
+                  <Text style={styles.smallSectionTitle}>Showing {reviews.length} reviews</Text>
+                  <TouchableOpacity style={styles.filterBtn}>
+                      <Text style={{fontSize: moderateScale(13), color: '#1e293b', fontWeight: '500'}}>Most Recent</Text>
+                      <ChevronDownIcon size={moderateScale(16)} color="#1e293b" />
+                  </TouchableOpacity>
+              </View>
+
+              {reviews.length === 0 ? (
+                  <View style={styles.emptyReviews}>
+                      <Text style={{fontSize: moderateScale(14), color: '#94A3B8', textAlign: 'center'}}>No reviews yet.</Text>
+                  </View>
+              ) : (
+                  reviews.map((rev) => (
+                      <View key={rev._id} style={styles.reviewCard}>
+                          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}}>
+                              <View>
+                                  <Text style={styles.reviewerName}>{rev.user?.name || 'Customer'}</Text>
+                                  <View style={{flexDirection: 'row', marginVertical: verticalScale(4), gap: horizontalScale(2)}}>
+                                      {[...Array(5)].map((_, i) => <StarSolid key={i} size={moderateScale(12)} color={i < rev.rating ? "#F59E0B" : "#E5E7EB"} />)}
+                                  </View>
+                              </View>
+                              <View style={{flexDirection: 'row', gap: horizontalScale(14)}}>
+                                  <TouchableOpacity onPress={() => openEditModal(rev)}><PencilSquareIcon size={moderateScale(18)} color="#64748b" /></TouchableOpacity>
+                                  <TouchableOpacity onPress={() => handleDeleteReview(rev._id)}><TrashIcon size={moderateScale(18)} color="#ef4444" /></TouchableOpacity>
+                              </View>
+                          </View>
+                          <Text style={styles.reviewTitleText}>{rev.title}</Text>
+                          <Text style={styles.reviewText}>{rev.comment}</Text>
+                          <View style={styles.dividerLight} />
+                          <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center', marginTop: verticalScale(10)}} onPress={() => handleMarkHelpful(rev._id)}>
+                              <HandThumbUpIcon size={moderateScale(16)} color="#64748b" />
+                              <Text style={{fontSize: moderateScale(12), color: '#64748b', marginLeft: horizontalScale(6)}}>Helpful ({rev.helpfulCount || 0})</Text>
+                          </TouchableOpacity>
+                      </View>
+                  ))
+              )}
+          </View>
+        </ScrollView>
+
+        {/* FOOTER - Updated with Safe Area Dynamic Padding */}
+        <View style={styles.footer}>
+          <TouchableOpacity style={[styles.cartBtn, isAdding && { opacity: 0.7 }]} onPress={handleAddToCart} disabled={isAdding}>
+            {isAdding ? <ActivityIndicator color="#fff" /> : <><ShoppingCartIcon size={moderateScale(20)} color="#fff" /><Text style={styles.cartText}>Add to Cart</Text></>}
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* MODAL */}
@@ -357,7 +359,8 @@ const ProductDetail = ({ route, navigation }) => {
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { paddingBottom: verticalScale(120) },
+  // Ensure the scroll content ends high enough so the last item isn't blocked by the footer
+  scrollContent: { paddingBottom: verticalScale(140) }, 
   galleryCard: { backgroundColor: '#FFFFFF', padding: moderateScale(20), borderBottomLeftRadius: moderateScale(30), borderBottomRightRadius: moderateScale(30), elevation: 4 },
   mainImage: { width: '100%', height: verticalScale(280) },
   thumbnailRow: { flexDirection: 'row', marginTop: verticalScale(18), justifyContent: 'center', gap: horizontalScale(12) },
@@ -402,7 +405,20 @@ const styles = StyleSheet.create({
   reviewTitleText: { fontWeight: '800', fontSize: moderateScale(14), color: '#1e293b', marginVertical: verticalScale(6) },
   reviewText: { fontSize: moderateScale(14), color: '#475569', lineHeight: moderateScale(22) },
   dividerLight: { height: 1, backgroundColor: '#F1F5F9', marginTop: verticalScale(14) },
-  footer: { position: 'absolute', bottom: 0, width: '100%', padding: moderateScale(16), backgroundColor: '#FFFFFF', borderTopWidth: 1, borderColor: '#E2E8F0', paddingBottom: Platform.OS === 'ios' ? verticalScale(30) : verticalScale(16) },
+  
+  // UPDATED FOOTER STYLE
+  footer: { 
+    position: 'absolute', 
+    bottom: 0, 
+    width: '100%', 
+    padding: moderateScale(16), 
+    backgroundColor: '#FFFFFF', 
+    borderTopWidth: 1, 
+    borderColor: '#E2E8F0',
+    // Dynamically adds space at bottom for modern devices (Home Indicator/Nav bar)
+    paddingBottom: Platform.OS === 'ios' ? verticalScale(34) : verticalScale(20), 
+  },
+  
   cartBtn: { backgroundColor: '#111827', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: verticalScale(56), borderRadius: moderateScale(14), gap: horizontalScale(10) },
   cartText: { color: '#FFFFFF', fontSize: moderateScale(17), fontWeight: '700' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: moderateScale(20) },

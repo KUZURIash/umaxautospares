@@ -15,9 +15,8 @@ import {
   UserIcon, BuildingOfficeIcon, LockClosedIcon,
   TrashIcon, ChevronLeftIcon, PhotoIcon, PencilSquareIcon,
   EyeIcon, EyeSlashIcon, CheckBadgeIcon, GiftIcon,
-  WalletIcon, LifebuoyIcon, DocumentTextIcon
+  WalletIcon, LifebuoyIcon, DocumentTextIcon, ExclamationTriangleIcon
 } from 'react-native-heroicons/outline';
-
 
 const { width } = Dimensions.get('window');
 
@@ -26,10 +25,11 @@ const AccountScreen = ({ navigation, onLogout }) => {
   const [loading, setLoading] = useState(false); 
   const [fetchingUser, setFetchingUser] = useState(true);
 
-  // Visibility States
+  // Visibility / UI States
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Modals
   const [showEmailChangeModal, setShowEmailChangeModal] = useState(false);
@@ -59,11 +59,10 @@ const AccountScreen = ({ navigation, onLogout }) => {
   }, []);
 
   useEffect(() => {
-    // Logic from website: Trigger coupon fetch when tier is premium and user is on Coupons tab
-    if (activeSection === 'Coupons' && profileData.tier === 'premium') {
+    if (activeSection === 'Coupons') {
       fetchCoupons();
     }
-  }, [activeSection, profileData.tier]);
+  }, [activeSection]);
 
   const fetchUserData = async () => {
     try {
@@ -103,36 +102,41 @@ const AccountScreen = ({ navigation, onLogout }) => {
   const fetchCoupons = async () => {
     try {
       setLoading(true);
-      // Website logic: Uses specific profile/available endpoint
-      const response = await api.get('/coupons/profile/available');
+      // Hitting the verified premium endpoint
+      const response = await api.get('/coupons/premium');
+      const resData = response.data?.data || response.data;
       
-      const data = response.data?.data || response.data;
-      // Web logic: filters for premiumOnly
-      const list = data.premiumCoupons || data.coupons || [];
-      setPremiumCoupons(list.filter(c => c.premiumOnly === true));
+      let list = [];
+      if (Array.isArray(resData)) {
+        list = resData;
+      } else if (resData?.coupons && Array.isArray(resData.coupons)) {
+        list = resData.coupons;
+      }
+      setPremiumCoupons(list);
     } catch (e) { 
       console.log("Coupon Fetch Error", e.message); 
+      // Fallback logic
+      try {
+          const fallback = await api.get('/coupons/available');
+          const fallbackData = fallback.data?.data?.coupons || fallback.data?.data || [];
+          setPremiumCoupons(fallbackData.filter(c => c.premiumOnly === true));
+      } catch (err) { setPremiumCoupons([]); }
     } finally {
       setLoading(false);
     }
   };
 
   const selectImageSource = () => {
-    Alert.alert(
-      "Profile Photo",
-      "Choose an option",
-      [
-        { text: "Take Photo", onPress: () => handleImagePicker('camera') },
-        { text: "Choose from Gallery", onPress: () => handleImagePicker('library') },
-        { text: "Cancel", style: "cancel" }
-      ]
-    );
+    Alert.alert("Profile Photo", "Choose an option", [
+      { text: "Take Photo", onPress: () => handleImagePicker('camera') },
+      { text: "Choose from Gallery", onPress: () => handleImagePicker('library') },
+      { text: "Cancel", style: "cancel" }
+    ]);
   };
 
   const handleImagePicker = async (type) => {
     const options = { mediaType: 'photo', quality: 0.6, includeBase64: true };
     const result = type === 'camera' ? await launchCamera(options) : await launchImageLibrary(options);
-
     if (result.didCancel || !result.assets) return;
     const file = result.assets[0];
     const base64Image = `data:${file.type || 'image/jpeg'};base64,${file.base64}`;
@@ -141,7 +145,7 @@ const AccountScreen = ({ navigation, onLogout }) => {
     try {
       await api.patch('/auth/profile', { avatar: base64Image });
       setProfileData({ ...profileData, profileImage: base64Image });
-      Alert.alert("Success", "Photo updated successfully!");
+      Alert.alert("Success", "Photo updated!");
     } catch (e) { Alert.alert("Upload Failed"); } finally { setLoading(false); }
   };
 
@@ -165,17 +169,13 @@ const AccountScreen = ({ navigation, onLogout }) => {
         businessDetails: {
           businessName: profileData.businessName,
           businessAddress: {
-            street: profileData.businessStreet,
-            city: profileData.businessCity,
-            state: profileData.businessState,
-            postalCode: profileData.businessPin,
-            country: 'India'
+            street: profileData.businessStreet, city: profileData.businessCity,
+            state: profileData.businessState, postalCode: profileData.businessPin, country: 'India'
           },
-          panNumber: profileData.panNumber,
-          gstin: profileData.gstin
+          panNumber: profileData.panNumber, gstin: profileData.gstin
         }
       });
-      Alert.alert("Success", "Business details updated!");
+      Alert.alert("Success", "Business updated!");
       fetchUserData();
     } catch (e) { Alert.alert("Error", "Failed to update business."); } 
     finally { setLoading(false); }
@@ -183,7 +183,7 @@ const AccountScreen = ({ navigation, onLogout }) => {
 
   const handleChangePassword = async () => {
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      Alert.alert("Error", "New passwords do not match.");
+      Alert.alert("Error", "Passwords do not match.");
       return;
     }
     setLoading(true);
@@ -192,7 +192,7 @@ const AccountScreen = ({ navigation, onLogout }) => {
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword
       });
-      Alert.alert("Success", "Password changed successfully!");
+      Alert.alert("Success", "Password changed!");
       setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
     } catch (e) { Alert.alert("Error", "Failed to change password."); } 
     finally { setLoading(false); }
@@ -203,7 +203,6 @@ const AccountScreen = ({ navigation, onLogout }) => {
     try {
       if (editingAddressId) await api.put(`/auth/addresses/${editingAddressId}`, addressForm);
       else await api.post('/auth/addresses', addressForm);
-      Alert.alert("Success", "Address saved!");
       setShowAddressModal(false);
       fetchUserData();
     } catch (e) { Alert.alert("Error", "Failed."); }
@@ -231,7 +230,6 @@ const AccountScreen = ({ navigation, onLogout }) => {
     setLoading(true);
     try {
       await api.post('/auth/change-email-verify', { otp });
-      Alert.alert("Success", "Email updated!");
       setShowOtpModal(false);
       fetchUserData();
     } catch (e) { Alert.alert("Error", "Invalid OTP."); } 
@@ -242,7 +240,6 @@ const AccountScreen = ({ navigation, onLogout }) => {
     setLoading(true);
     try {
       await api.post('/auth/change-phone', phoneForm);
-      Alert.alert("Success", "Phone updated!");
       setShowPhoneChangeModal(false);
     } catch (e) { Alert.alert("Error", "Failed."); } 
     finally { setLoading(false); }
@@ -256,70 +253,31 @@ const AccountScreen = ({ navigation, onLogout }) => {
         <Text style={styles.contentTitle}>Profile Information</Text>
       </View>
       <TouchableOpacity style={styles.uploadBox} onPress={selectImageSource} disabled={loading}>
-        {loading ? (
-           <ActivityIndicator color="#2563EB" />
-        ) : profileData.profileImage ? (
-           <Image source={{ uri: profileData.profileImage }} style={styles.fullImage} /> 
-        ) : (
-           <View style={styles.uploadPlaceholder}>
-             <PhotoIcon size={moderateScale(30)} color="#94a3b8" />
-             <Text style={styles.uploadText}>Click to upload</Text>
-           </View>
-        )}
+        {loading ? <ActivityIndicator color="#2563EB" /> : profileData.profileImage ? <Image source={{ uri: profileData.profileImage }} style={styles.fullImage} /> : <View style={styles.uploadPlaceholder}><PhotoIcon size={moderateScale(30)} color="#94a3b8" /><Text style={styles.uploadText}>Click to upload</Text></View>}
       </TouchableOpacity>
       <View style={styles.row}>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>First Name</Text>
-          <TextInput style={styles.input} value={profileData.firstName} onChangeText={(t)=>setProfileData({...profileData, firstName:t})} />
-        </View>
-        <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Last Name</Text>
-          <TextInput style={styles.input} value={profileData.lastName} onChangeText={(t)=>setProfileData({...profileData, lastName:t})} />
-        </View>
+        <View style={styles.fieldGroup}><Text style={styles.label}>First Name</Text><TextInput style={styles.input} value={profileData.firstName} onChangeText={(t)=>setProfileData({...profileData, firstName:t})} /></View>
+        <View style={styles.fieldGroup}><Text style={styles.label}>Last Name</Text><TextInput style={styles.input} value={profileData.lastName} onChangeText={(t)=>setProfileData({...profileData, lastName:t})} /></View>
       </View>
       <Text style={styles.label}>Email</Text>
-      <View style={styles.inlineActionInput}>
-        <TextInput style={[styles.input, { flex: 1, backgroundColor:'#f1f5f9' }]} value={profileData.email} editable={false} />
-        <TouchableOpacity style={styles.actionBtn} onPress={() => setShowEmailChangeModal(true)}>
-          <Text style={styles.actionBtnText}>Change</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={styles.inlineActionInput}><TextInput style={[styles.input, { flex: 1, backgroundColor:'#f1f5f9' }]} value={profileData.email} editable={false} /><TouchableOpacity style={styles.actionBtn} onPress={() => setShowEmailChangeModal(true)}><Text style={styles.actionBtnText}>Change</Text></TouchableOpacity></View>
       <Text style={styles.label}>Phone</Text>
-      <View style={styles.inlineActionInput}>
-        <TextInput style={[styles.input, { flex: 1, backgroundColor: '#f1f5f9' }]} value={profileData.phone} editable={false} />
-        <TouchableOpacity style={styles.actionBtn} onPress={() => setShowPhoneChangeModal(true)}>
-          <Text style={styles.actionBtnText}>Change</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={styles.inlineActionInput}><TextInput style={[styles.input, { flex: 1, backgroundColor: '#f1f5f9' }]} value={profileData.phone} editable={false} /><TouchableOpacity style={styles.actionBtn} onPress={() => setShowPhoneChangeModal(true)}><Text style={styles.actionBtnText}>Change</Text></TouchableOpacity></View>
       <Text style={styles.label}>Aadhaar Card Number</Text>
       <TextInput style={styles.input} value={profileData.aadhaarNumber} onChangeText={(t)=>setProfileData({...profileData, aadhaarNumber:t})} keyboardType="numeric" maxLength={12} />
-      <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateProfile}>
-        <Text style={styles.saveBtnText}>Save Changes</Text>
-      </TouchableOpacity>
+      <TouchableOpacity style={styles.saveBtn} onPress={handleUpdateProfile}><Text style={styles.saveBtnText}>Save Changes</Text></TouchableOpacity>
     </ScrollView>
   );
 
   const renderAddressSection = () => (
     <View style={styles.contentFlex}>
-      <View style={styles.addressHeaderRow}>
-        <Text style={styles.cardTitle}>My Addresses</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={() => { setEditingAddressId(null); setAddressForm({label: '', street: '', city: '', state: '', postalCode: '', country: 'India', isDefault: false}); setShowAddressModal(true); }}>
-          <Text style={styles.addBtnText}>+ Add New</Text>
-        </TouchableOpacity>
-      </View>
+      <View style={styles.addressHeaderRow}><Text style={styles.cardTitle}>My Addresses</Text><TouchableOpacity style={styles.addBtn} onPress={() => { setEditingAddressId(null); setAddressForm({label: '', street: '', city: '', state: '', postalCode: '', country: 'India', isDefault: false}); setShowAddressModal(true); }}><Text style={styles.addBtnText}>+ Add New</Text></TouchableOpacity></View>
       <ScrollView showsVerticalScrollIndicator={false}>
         {addresses.map((item) => (
           <View key={item._id} style={styles.addressCard}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.addressLabelText}>{item.label}</Text>
-              <Text style={styles.addressDetailText}>{item.street}, {item.city} - {item.postalCode}</Text>
-            </View>
-            <TouchableOpacity onPress={() => { setEditingAddressId(item._id); setAddressForm(item); setShowAddressModal(true); }}>
-              <PencilSquareIcon size={moderateScale(20)} color="#64748b" />
-            </TouchableOpacity>
-            <TouchableOpacity style={{ marginLeft: horizontalScale(15) }} onPress={() => handleDeleteAddress(item._id)}>
-              <TrashIcon size={moderateScale(20)} color="#ef4444" />
-            </TouchableOpacity>
+            <View style={{ flex: 1 }}><Text style={styles.addressLabelText}>{item.label}</Text><Text style={styles.addressDetailText}>{item.street}, {item.city} - {item.postalCode}</Text></View>
+            <TouchableOpacity onPress={() => { setEditingAddressId(item._id); setAddressForm(item); setShowAddressModal(true); }}><PencilSquareIcon size={moderateScale(20)} color="#64748b" /></TouchableOpacity>
+            <TouchableOpacity style={{ marginLeft: horizontalScale(15) }} onPress={() => handleDeleteAddress(item._id)}><TrashIcon size={moderateScale(20)} color="#ef4444" /></TouchableOpacity>
           </View>
         ))}
       </ScrollView>
@@ -371,37 +329,22 @@ const AccountScreen = ({ navigation, onLogout }) => {
 
   const renderCouponsSection = () => (
     <View style={{flex: 1}}>
-      <View style={styles.contentHeader}>
-        <GiftIcon size={moderateScale(20)} color="#2563EB" />
-        <Text style={styles.contentTitle}>Premium Coupons</Text>
-      </View>
-      <Text style={styles.couponSubText}>These coupons are exclusive to premium users and can be applied at checkout.</Text>
-      
+      <View style={styles.contentHeader}><GiftIcon size={moderateScale(20)} color="#2563EB" /><Text style={styles.contentTitle}>Premium Coupons</Text></View>
+      <Text style={styles.couponSubText}>Exclusive to premium users. Apply at checkout.</Text>
       <View style={loading ? styles.loaderBox : styles.couponPlaceholderBox}>
-        {loading ? (
-          <ActivityIndicator color="#2563EB" size="large" />
-        ) : premiumCoupons.length > 0 ? (
+        {loading ? <ActivityIndicator color="#2563EB" size="large" /> : premiumCoupons.length > 0 ? (
           <ScrollView showsVerticalScrollIndicator={false} style={{width: '100%'}}>
             {premiumCoupons.map((coupon, i) => (
               <View key={i} style={styles.couponCardStyle}>
-                <View style={styles.couponHeaderRow}>
-                    <Text style={styles.couponCodeText}>{coupon.code}</Text>
-                    <View style={styles.premiumOnlyTag}>
-                        <Text style={styles.premiumOnlyText}>Premium Only</Text>
-                    </View>
-                </View>
-                <Text style={styles.couponDiscountMain}>{coupon.discountText}</Text>
+                <View style={styles.couponHeaderRow}><Text style={styles.couponCodeText}>{coupon.code}</Text><View style={styles.premiumOnlyTag}><Text style={styles.premiumOnlyText}>Premium Only</Text></View></View>
+                <Text style={styles.couponDiscountMain}>{coupon.discountText || 'Discount Applied'}</Text>
                 <Text style={styles.couponDescriptionText}>{coupon.description}</Text>
-                <View style={styles.couponFooter}>
-                    {coupon.conditions && coupon.conditions.map((cond, idx) => (
-                        <Text key={idx} style={styles.couponDetailText}>• {cond}</Text>
-                    ))}
-                </View>
+                <View style={styles.couponFooter}>{coupon.conditions && coupon.conditions.map((cond, idx) => (<Text key={idx} style={styles.couponDetailText}>• {cond}</Text>))}</View>
               </View>
             ))}
           </ScrollView>
         ) : (
-          <Text style={styles.noCouponText}>No premium coupons available right now.</Text>
+          <View style={{alignItems: 'center'}}><GiftIcon size={40} color="#cbd5e1" /><Text style={styles.noCouponText}>No premium coupons available.</Text><TouchableOpacity onPress={fetchCoupons} style={{marginTop: 10}}><Text style={{color: '#2563EB', fontWeight: 'bold'}}>Retry Fetch</Text></TouchableOpacity></View>
         )}
       </View>
     </View>
@@ -411,99 +354,33 @@ const AccountScreen = ({ navigation, onLogout }) => {
 
   return (
     <SafeScreenWrapper backgroundColor="#f8fafc">
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => navigation.navigate('MainApp')}>
-            <ChevronLeftIcon size={moderateScale(24)} color="#1e293b" />
-          </TouchableOpacity>
-          <Text style={styles.topBarTitle}>My Account</Text>
-        </View>
-
+        <View style={styles.topBar}><TouchableOpacity onPress={() => navigation.navigate('MainApp')}><ChevronLeftIcon size={moderateScale(24)} color="#1e293b" /></TouchableOpacity><Text style={styles.topBarTitle}>My Account</Text></View>
         <ScrollView contentContainerStyle={styles.mainScroll} showsVerticalScrollIndicator={false}>
           <View style={styles.gridContainer}>
             <View style={styles.sidebarCard}>
               <View style={styles.profileBrief}>
                 <View style={styles.avatar}>
-                  {profileData.profileImage ? (
-                    <Image source={{ uri: profileData.profileImage }} style={styles.avatarImage} />
-                  ) : (
-                    <Text style={styles.avatarText}>{profileData.firstName[0] || '?'}</Text>
-                  )}
+                   {profileData.profileImage ? <Image source={{ uri: profileData.profileImage }} style={styles.avatarImage} /> : <Text style={styles.avatarText}>{profileData.firstName[0]?.toUpperCase()}</Text>}
                 </View>
                 <View style={styles.profileText}>
-                  <View style={{flexDirection: 'row', alignItems: 'center'}}>
-                    <Text style={styles.userName}>{profileData.firstName} {profileData.lastName}</Text>
-                    {isPremium && <CheckBadgeIcon size={moderateScale(18)} color="#2563EB" style={{marginLeft: horizontalScale(4)}} />}
-                  </View>
+                  <View style={{flexDirection: 'row', alignItems: 'center'}}><Text style={styles.userName}>{profileData.firstName} {profileData.lastName}</Text>{isPremium && <CheckBadgeIcon size={18} color="#2563EB" style={{marginLeft: 4}} />}</View>
                   <Text style={styles.customerIdText}>Customer ID: {profileData.customerId}</Text>
                   <Text style={styles.userEmail} numberOfLines={1}>{profileData.email}</Text>
                 </View>
               </View>
-
-              {isPremium && (
-                <View style={styles.premiumBadgeBanner}>
-                    <CheckBadgeIcon size={moderateScale(16)} color="#fff" />
-                    <Text style={styles.premiumBadgeText}>Premium Member</Text>
-                </View>
-              )}
-
+              {isPremium && <View style={styles.premiumBadgeBanner}><CheckBadgeIcon size={16} color="#fff" /><Text style={styles.premiumBadgeText}>Premium Member</Text></View>}
               <View style={styles.menuItems}>
-                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Profile' && styles.menuBtnActive]} onPress={() => setActiveSection('Profile')}>
-                    <UserIcon size={moderateScale(20)} color={activeSection === 'Profile' ? "#2563EB" : "#64748b"} />
-                    <Text style={[styles.menuLabel, activeSection === 'Profile' && styles.menuLabelActive]}>Profile</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Address' && styles.menuBtnActive]} onPress={() => setActiveSection('Address')}>
-                    <PencilSquareIcon size={moderateScale(20)} color={activeSection === 'Address' ? "#2563EB" : "#64748b"} />
-                    <Text style={[styles.menuLabel, activeSection === 'Address' && styles.menuLabelActive]}>Address</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Business' && styles.menuBtnActive]} onPress={() => setActiveSection('Business')}>
-                    <BuildingOfficeIcon size={moderateScale(20)} color={activeSection === 'Business' ? "#2563EB" : "#64748b"} />
-                    <Text style={[styles.menuLabel, activeSection === 'Business' && styles.menuLabelActive]}>Business</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('Wallet')}>
-                    <WalletIcon size={moderateScale(20)} color="#64748b" />
-                    <Text style={styles.menuLabel}>Wallet</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('Support')}>
-                    <LifebuoyIcon size={moderateScale(20)} color="#64748b" />
-                    <Text style={styles.menuLabel}>Support</Text>
-                </TouchableOpacity>
-
-                {isPremium && (
-                  <TouchableOpacity style={[styles.menuBtn, activeSection === 'Coupons' && styles.menuBtnActive]} onPress={() => setActiveSection('Coupons')}>
-                    <GiftIcon size={moderateScale(20)} color={activeSection === 'Coupons' ? "#2563EB" : "#64748b"} />
-                    <Text style={[styles.menuLabel, activeSection === 'Coupons' && styles.menuLabelActive]}>Coupons</Text>
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Security' && styles.menuBtnActive]} onPress={() => setActiveSection('Security')}>
-                    <LockClosedIcon size={moderateScale(20)} color={activeSection === 'Security' ? "#2563EB" : "#64748b"} />
-                    <Text style={[styles.menuLabel, activeSection === 'Security' && styles.menuLabelActive]}>Security</Text>
-                </TouchableOpacity>
-
-                {/* TERMS AND CONDITIONS BUTTON ADDED BELOW SECURITY */}
-                <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('TermsAndConditions')}>
-                    <DocumentTextIcon size={moderateScale(20)} color="#64748b" />
-                    <Text style={styles.menuLabel}>Terms & Conditions</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.menuBtn, {marginTop: verticalScale(20), backgroundColor: '#fff1f2'}]} 
-                  onPress={() => {
-                    Alert.alert("Logout", "Are you sure you want to exit?", [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Logout", onPress: onLogout, style: 'destructive' }
-                    ]);
-                  }}>
-                  <TrashIcon size={moderateScale(20)} color="#ef4444" />
-                  <Text style={[styles.menuLabel, {color: '#ef4444'}]}>Logout</Text>
-                </TouchableOpacity>
+                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Profile' && styles.menuBtnActive]} onPress={() => setActiveSection('Profile')}><UserIcon size={20} color={activeSection === 'Profile' ? "#2563EB" : "#64748b"} /><Text style={[styles.menuLabel, activeSection === 'Profile' && styles.menuLabelActive]}>Profile</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Address' && styles.menuBtnActive]} onPress={() => setActiveSection('Address')}><PencilSquareIcon size={20} color={activeSection === 'Address' ? "#2563EB" : "#64748b"} /><Text style={[styles.menuLabel, activeSection === 'Address' && styles.menuLabelActive]}>Address</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Business' && styles.menuBtnActive]} onPress={() => setActiveSection('Business')}><BuildingOfficeIcon size={20} color={activeSection === 'Business' ? "#2563EB" : "#64748b"} /><Text style={[styles.menuLabel, activeSection === 'Business' && styles.menuLabelActive]}>Business</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('Wallet')}><WalletIcon size={20} color="#64748b" /><Text style={styles.menuLabel}>Wallet</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('Support')}><LifebuoyIcon size={20} color="#64748b" /><Text style={styles.menuLabel}>Support</Text></TouchableOpacity>
+                {isPremium && <TouchableOpacity style={[styles.menuBtn, activeSection === 'Coupons' && styles.menuBtnActive]} onPress={() => setActiveSection('Coupons')}><GiftIcon size={20} color={activeSection === 'Coupons' ? "#2563EB" : "#64748b"} /><Text style={[styles.menuLabel, activeSection === 'Coupons' && styles.menuLabelActive]}>Coupons</Text></TouchableOpacity>}
+                <TouchableOpacity style={[styles.menuBtn, activeSection === 'Security' && styles.menuBtnActive]} onPress={() => setActiveSection('Security')}><LockClosedIcon size={20} color={activeSection === 'Security' ? "#2563EB" : "#64748b"} /><Text style={[styles.menuLabel, activeSection === 'Security' && styles.menuLabelActive]}>Security</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.menuBtn} onPress={() => navigation.navigate('TermsAndConditions')}><DocumentTextIcon size={20} color="#64748b" /><Text style={styles.menuLabel}>Terms & Conditions</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.menuBtn, {marginTop: 20, backgroundColor: '#fff1f2'}]} onPress={() => setShowLogoutModal(true)}><TrashIcon size={20} color="#ef4444" /><Text style={[styles.menuLabel, {color: '#ef4444'}]}>Logout</Text></TouchableOpacity>
               </View>
             </View>
-
             <View style={styles.mainContentCard}>
                {activeSection === 'Profile' && renderProfileSection()}
                {activeSection === 'Address' && renderAddressSection()}
@@ -514,7 +391,22 @@ const AccountScreen = ({ navigation, onLogout }) => {
           </View>
         </ScrollView>
 
-        {/* MODALS */}
+        {/* LOGOUT MODAL UI */}
+        <Modal visible={showLogoutModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={styles.logoutModalCard}>
+                <View style={styles.logoutIconCircle}><ExclamationTriangleIcon size={30} color="#ef4444" /></View>
+                <Text style={styles.modalTitle}>Confirm Logout</Text>
+                <Text style={styles.modalSubText}>Are you sure you want to sign out of your account?</Text>
+                <View style={styles.logoutButtonRow}>
+                    <TouchableOpacity style={styles.cancelLogoutBtn} onPress={() => setShowLogoutModal(false)}><Text style={styles.cancelLogoutText}>Stay</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.confirmLogoutBtn} onPress={() => { setShowLogoutModal(false); onLogout(); }}><Text style={styles.confirmLogoutText}>Logout</Text></TouchableOpacity>
+                </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* OTHER MODALS */}
         <Modal visible={showEmailChangeModal} transparent animationType="fade">
           <View style={styles.modalOverlay}><View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Change Email</Text>
@@ -543,18 +435,9 @@ const AccountScreen = ({ navigation, onLogout }) => {
             <Text style={styles.modalTitle}>{editingAddressId ? 'Edit Address' : 'Add New Address'}</Text>
             <TextInput style={styles.input} placeholder="Label" onChangeText={(t)=>setAddressForm({...addressForm, label: t})} value={addressForm.label} />
             <TextInput style={styles.input} placeholder="Street" onChangeText={(t)=>setAddressForm({...addressForm, street: t})} value={addressForm.street} />
-            <View style={styles.row}>
-                <TextInput style={[styles.input, {flex:1}]} placeholder="City" onChangeText={(t)=>setAddressForm({...addressForm, city: t})} value={addressForm.city} />
-                <TextInput style={[styles.input, {flex:1}]} placeholder="State" onChangeText={(t)=>setAddressForm({...addressForm, state: t})} value={addressForm.state} />
-            </View>
-            <View style={styles.row}>
-                <TextInput style={[styles.input, {flex:1}]} placeholder="PIN Code" keyboardType="numeric" onChangeText={(t)=>setAddressForm({...addressForm, postalCode: t})} value={addressForm.postalCode} />
-                <TextInput style={[styles.input, {flex:1}]} placeholder="Country" onChangeText={(t)=>setAddressForm({...addressForm, country: t})} value={addressForm.country} />
-            </View>
-            <View style={[styles.row, {alignItems:'center', marginTop: verticalScale(10)}]}>
-                <Text style={{color:'#1e293b'}}>Set as default</Text>
-                <Switch value={addressForm.isDefault} onValueChange={(v)=>setAddressForm({...addressForm, isDefault: v})} />
-            </View>
+            <View style={styles.row}><TextInput style={[styles.input, {flex:1}]} placeholder="City" onChangeText={(t)=>setAddressForm({...addressForm, city: t})} value={addressForm.city} /><TextInput style={[styles.input, {flex:1}]} placeholder="State" onChangeText={(t)=>setAddressForm({...addressForm, state: t})} value={addressForm.state} /></View>
+            <View style={styles.row}><TextInput style={[styles.input, {flex:1}]} placeholder="PIN" keyboardType="numeric" onChangeText={(t)=>setAddressForm({...addressForm, postalCode: t})} value={addressForm.postalCode} /><TextInput style={[styles.input, {flex:1}]} placeholder="Country" value="India" readOnly /></View>
+            <View style={[styles.row, {alignItems:'center', marginTop: 10}]}><Text style={{color:'#1e293b'}}>Default Address</Text><Switch value={addressForm.isDefault} onValueChange={(v)=>setAddressForm({...addressForm, isDefault: v})} /></View>
             <View style={styles.buttonRow}><TouchableOpacity style={styles.cancelBtn} onPress={()=>setShowAddressModal(false)}><Text>Cancel</Text></TouchableOpacity><TouchableOpacity style={styles.confirmBtn} onPress={handleSaveAddress}><Text style={{color:'#fff'}}>Save</Text></TouchableOpacity></View>
           </View></View>
         </Modal>
@@ -563,70 +446,77 @@ const AccountScreen = ({ navigation, onLogout }) => {
 };
 
 const styles = StyleSheet.create({
-  topBar: { flexDirection: 'row', alignItems: 'center', padding: moderateScale(16), backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
-  topBarTitle: { fontSize: moderateScale(18), fontWeight: '700', color: '#1e293b', marginLeft: horizontalScale(12) },
-  mainScroll: { padding: horizontalScale(16) },
-  gridContainer: { flexDirection: width > 600 ? 'row' : 'column', gap: horizontalScale(16) },
-  sidebarCard: { width: width > 600 ? '35%' : '100%', backgroundColor: '#fff', borderRadius: moderateScale(16), padding: horizontalScale(16), borderWidth: 1, borderColor: '#f1f5f9' },
-  profileBrief: { flexDirection: 'row', alignItems: 'center', marginBottom: verticalScale(15) },
-  avatar: { width: horizontalScale(48), height: horizontalScale(48), borderRadius: horizontalScale(24), backgroundColor: '#1e3a8a', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-  avatarImage: { width: '100%', height: '100%', borderRadius: horizontalScale(24) },
-  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: moderateScale(18) },
-  profileText: { marginLeft: horizontalScale(12), flex: 1 },
-  userName: { fontSize: moderateScale(14), fontWeight: '700', color: '#1e293b' },
-  customerIdText: { fontSize: moderateScale(11), color: '#64748b', marginVertical: verticalScale(2) },
-  userEmail: { fontSize: moderateScale(11), color: '#94a3b8' },
-  premiumBadgeBanner: { backgroundColor: '#2563EB', flexDirection: 'row', alignItems: 'center', padding: verticalScale(10), borderRadius: moderateScale(8), marginBottom: verticalScale(15), gap: horizontalScale(8) },
-  premiumBadgeText: { color: '#fff', fontSize: moderateScale(13), fontWeight: '600' },
-  menuItems: { gap: verticalScale(4) },
-  menuBtn: { flexDirection: 'row', alignItems: 'center', padding: horizontalScale(12), borderRadius: moderateScale(10), gap: horizontalScale(12) },
+  topBar: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
+  topBarTitle: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginLeft: 12 },
+  mainScroll: { padding: 16 },
+  gridContainer: { flexDirection: width > 600 ? 'row' : 'column', gap: 16 },
+  sidebarCard: { width: width > 600 ? '35%' : '100%', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#f1f5f9', marginBottom: 16 },
+  profileBrief: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#1e3a8a', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarImage: { width: '100%', height: '100%' },
+  avatarText: { color: '#fff', fontWeight: 'bold', fontSize: 18 },
+  profileText: { marginLeft: 12, flex: 1 },
+  userName: { fontSize: 14, fontWeight: '700', color: '#1e293b' },
+  customerIdText: { fontSize: 11, color: '#64748b', marginVertical: 2 },
+  userEmail: { fontSize: 11, color: '#94a3b8' },
+  premiumBadgeBanner: { backgroundColor: '#2563EB', flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 8, marginBottom: 15, gap: 8 },
+  premiumBadgeText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  menuBtn: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 10, gap: 12, marginBottom: 4 },
   menuBtnActive: { backgroundColor: '#eff6ff' },
-  menuLabel: { fontSize: moderateScale(14), fontWeight: '500', color: '#64748b' },
+  menuLabel: { fontSize: 14, fontWeight: '500', color: '#64748b' },
   menuLabelActive: { color: '#2563EB', fontWeight: '700' },
-  mainContentCard: { flex: 1, backgroundColor: '#fff', borderRadius: moderateScale(16), padding: horizontalScale(20), borderWidth: 1, borderColor: '#f1f5f9', minHeight: verticalScale(480) },
-  contentHeader: { flexDirection: 'row', alignItems: 'center', gap: horizontalScale(10), marginBottom: verticalScale(20) },
-  contentTitle: { fontSize: moderateScale(16), fontWeight: '700', color: '#1e293b' },
-  couponSubText: { fontSize: moderateScale(13), color: '#64748b', marginBottom: verticalScale(15) },
-  loaderBox: { justifyContent: 'center', alignItems: 'center', minHeight: verticalScale(200) },
-  couponPlaceholderBox: { minHeight: verticalScale(150), justifyContent: 'center', alignItems: 'center' },
-  noCouponText: { color: '#94a3b8', fontSize: moderateScale(14) },
-  couponCardStyle: { backgroundColor: '#eff6ff', borderRadius: moderateScale(12), padding: horizontalScale(16), marginBottom: verticalScale(12), borderWidth: 1, borderColor: '#dbeafe' },
+  mainContentCard: { flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#f1f5f9', minHeight: 480 },
+  contentHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  contentTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
+  couponSubText: { fontSize: 13, color: '#64748b', marginBottom: 15 },
+  couponPlaceholderBox: { minHeight: 150 },
+  noCouponText: { color: '#94a3b8', fontSize: 14, marginTop: 10 },
+  couponCardStyle: { backgroundColor: '#eff6ff', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#dbeafe' },
   couponHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  couponCodeText: { fontSize: moderateScale(16), fontWeight: '800', color: '#1d4ed8', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
-  premiumOnlyTag: { backgroundColor: '#dbeafe', paddingHorizontal: horizontalScale(8), paddingVertical: verticalScale(2), borderRadius: moderateScale(4) },
-  premiumOnlyText: { fontSize: moderateScale(10), color: '#1d4ed8', fontWeight: '700' },
-  couponDiscountMain: { fontSize: moderateScale(18), fontWeight: '700', color: '#1e293b', marginTop: verticalScale(8) },
-  couponDescriptionText: { fontSize: moderateScale(14), color: '#475569', marginVertical: verticalScale(6) },
-  couponFooter: { borderTopWidth: 1, borderTopColor: '#dbeafe', paddingTop: verticalScale(8), marginTop: verticalScale(4) },
-  couponDetailText: { fontSize: moderateScale(12), color: '#64748b', marginBottom: verticalScale(2) },
-  uploadBox: { height: verticalScale(100), borderStyle: 'dashed', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: moderateScale(12), justifyContent: 'center', alignItems: 'center', marginBottom: verticalScale(20), overflow: 'hidden' },
+  couponCodeText: { fontSize: 16, fontWeight: '800', color: '#1d4ed8' },
+  premiumOnlyTag: { backgroundColor: '#dbeafe', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  premiumOnlyText: { fontSize: 10, color: '#1d4ed8', fontWeight: '700' },
+  couponDiscountMain: { fontSize: 18, fontWeight: '700', color: '#1e293b', marginTop: 8 },
+  couponDescriptionText: { fontSize: 14, color: '#475569', marginVertical: 6 },
+  couponFooter: { borderTopWidth: 1, borderTopColor: '#dbeafe', paddingTop: 8, marginTop: 4 },
+  couponDetailText: { fontSize: 12, color: '#64748b', marginBottom: 2 },
+  loaderBox: { justifyContent: 'center', alignItems: 'center', minHeight: 200 },
+  uploadBox: { height: 100, borderStyle: 'dashed', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 20, overflow: 'hidden' },
   fullImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   uploadPlaceholder: { alignItems: 'center' },
-  uploadText: { fontSize: moderateScale(14), color: '#64748b' },
-  row: { flexDirection: 'row', gap: horizontalScale(15) },
+  uploadText: { fontSize: 14, color: '#64748b' },
+  row: { flexDirection: 'row', gap: 15 },
   fieldGroup: { flex: 1 },
-  label: { fontSize: moderateScale(13), fontWeight: '600', color: '#1e293b', marginBottom: verticalScale(8), marginTop: verticalScale(15) },
-  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: moderateScale(10), padding: horizontalScale(12), color: '#1e293b', marginTop: verticalScale(5), fontSize: moderateScale(14) },
-  passwordInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: moderateScale(10), paddingRight: horizontalScale(12), marginTop: verticalScale(5) },
-  passwordInput: { flex: 1, padding: horizontalScale(12), color: '#1e293b', fontSize: moderateScale(14) },
-  inlineActionInput: { flexDirection: 'row', alignItems: 'center', gap: horizontalScale(10) },
-  actionBtn: { padding: moderateScale(10) },
-  actionBtnText: { color: '#2563EB', fontWeight: '600', fontSize: moderateScale(14) },
-  saveBtn: { backgroundColor: '#2b3d8f', padding: verticalScale(15), borderRadius: moderateScale(10), marginTop: verticalScale(30), alignItems: 'center' },
-  saveBtnText: { color: '#fff', fontWeight: 'bold', fontSize: moderateScale(15) },
-  addressHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: verticalScale(20) },
-  cardTitle: { fontSize: moderateScale(16), fontWeight: '700', color: '#1e293b' },
-  addBtn: { backgroundColor: '#2563EB', paddingHorizontal: horizontalScale(16), paddingVertical: verticalScale(8), borderRadius: moderateScale(8) },
-  addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: moderateScale(14) },
-  addressCard: { flexDirection: 'row', alignItems: 'center', padding: horizontalScale(16), backgroundColor: '#f8fafc', borderRadius: moderateScale(12), marginBottom: verticalScale(12), borderWidth: 1, borderColor: '#e2e8f0' },
-  addressLabelText: { fontWeight: 'bold', color: '#1e293b', fontSize: moderateScale(14) },
-  addressDetailText: { color: '#64748b', fontSize: moderateScale(12) },
+  label: { fontSize: 13, fontWeight: '600', color: '#1e293b', marginBottom: 8, marginTop: 15 },
+  input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, padding: 12, color: '#1e293b', marginTop: 5, fontSize: 14 },
+  passwordInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, paddingRight: 12, marginTop: 5 },
+  passwordInput: { flex: 1, padding: 12, color: '#1e293b', fontSize: 14 },
+  inlineActionInput: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  actionBtn: { padding: 10 },
+  actionBtnText: { color: '#2563EB', fontWeight: '600' },
+  saveBtn: { backgroundColor: '#2b3d8f', padding: 15, borderRadius: 10, marginTop: 30, alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontWeight: 'bold' },
+  addressHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  cardTitle: { fontSize: 16, fontWeight: '700', color: '#1e293b' },
+  addBtn: { backgroundColor: '#2563EB', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
+  addBtnText: { color: '#fff', fontWeight: 'bold' },
+  addressCard: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#f8fafc', borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#e2e8f0' },
+  addressLabelText: { fontWeight: 'bold', color: '#1e293b' },
+  addressDetailText: { color: '#64748b', fontSize: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalCard: { width: '85%', backgroundColor: '#fff', padding: horizontalScale(24), borderRadius: moderateScale(16) },
-  modalTitle: { fontSize: moderateScale(20), fontWeight: 'bold', marginBottom: verticalScale(20), color: '#1e293b' },
-  buttonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: horizontalScale(12), marginTop: verticalScale(25) },
-  cancelBtn: { padding: horizontalScale(12), borderRadius: moderateScale(8), backgroundColor: '#f1f5f9' },
-  confirmBtn: { padding: horizontalScale(12), borderRadius: moderateScale(8), backgroundColor: '#2b3d8f' }
+  modalCard: { width: '85%', backgroundColor: '#fff', padding: 24, borderRadius: 16 },
+  logoutModalCard: { width: '80%', backgroundColor: '#fff', padding: 24, borderRadius: 20, alignItems: 'center' },
+  logoutIconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#fff1f2', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  modalSubText: { textAlign: 'center', color: '#64748b', fontSize: 14, marginBottom: 24 },
+  logoutButtonRow: { flexDirection: 'row', gap: 12, width: '100%' },
+  cancelLogoutBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: '#f1f5f9', alignItems: 'center' },
+  cancelLogoutText: { color: '#475569', fontWeight: '600' },
+  confirmLogoutBtn: { flex: 1, padding: 14, borderRadius: 12, backgroundColor: '#ef4444', alignItems: 'center' },
+  confirmLogoutText: { color: '#fff', fontWeight: '600' },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 8, color: '#1e293b' },
+  buttonRow: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 25 },
+  cancelBtn: { padding: 12, borderRadius: 8, backgroundColor: '#f1f5f9' },
+  confirmBtn: { padding: 12, borderRadius: 8, backgroundColor: '#2b3d8f' }
 });
 
 export default AccountScreen;
