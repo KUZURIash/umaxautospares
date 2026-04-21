@@ -1,4 +1,4 @@
-package com.umaxautospares
+package com.umax.autospare;
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

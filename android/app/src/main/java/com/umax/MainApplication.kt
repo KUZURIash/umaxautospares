@@ -1,4 +1,4 @@
-package com.umaxautospares
+package com.umax.autospare;
 
 import android.app.Application
 import com.facebook.react.PackageList
