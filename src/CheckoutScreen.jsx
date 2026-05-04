@@ -17,10 +17,10 @@ import {
   CheckCircleIcon,
   TruckIcon,
   ShieldCheckIcon,
-  ChevronDownIcon
+  ChevronDownIcon,
+  InformationCircleIcon
 } from "react-native-heroicons/outline";
 
-const { width } = Dimensions.get('window');
 const RAZORPAY_KEY_ID = 'rzp_live_SIiJkM2kUz6Sqz';
 
 const INDIAN_STATES = [
@@ -42,6 +42,11 @@ export default function CheckoutScreen({ navigation }) {
   const [paymentMethod, setPaymentMethod] = useState('online');
   const [stateModalVisible, setStateModalVisible] = useState(false);
   
+  // New States for Delivery Partner
+  const [deliveryPartners, setDeliveryPartners] = useState([]);
+  const [selectedPartner, setSelectedPartner] = useState(null);
+  const [partnerModalVisible, setPartnerModalVisible] = useState(false);
+
   // Success State Logic
   const [isSuccess, setIsSuccess] = useState(false);
   const [placedOrderId, setPlacedOrderId] = useState(null);
@@ -54,8 +59,13 @@ export default function CheckoutScreen({ navigation }) {
   useEffect(() => {
     const initCheckout = async () => {
       try {
-        const res = await api.get('/auth/me');
-        const userData = res.data?.data?.user;
+        // Fetch User and Delivery Partners simultaneously
+        const [userRes, partnerRes] = await Promise.all([
+            api.get('/auth/me'),
+            api.get('/delivery-partners') 
+        ]);
+
+        const userData = userRes.data?.data?.user;
         if (userData) {
           setUser(userData);
           setForm(prev => ({
@@ -67,10 +77,21 @@ export default function CheckoutScreen({ navigation }) {
           }));
           if (userData.addresses) setAddresses(userData.addresses);
         }
+
+        if (partnerRes.data?.data?.partners) {
+            setDeliveryPartners(partnerRes.data.data.partners);
+        }
       } catch (err) { console.log("Init error:", err) }
     };
     initCheckout();
   }, []);
+
+  // Sync Logic: If partner selected, force Online payment
+  useEffect(() => {
+    if (selectedPartner) {
+        setPaymentMethod('online');
+    }
+  }, [selectedPartner]);
 
   const totals = useMemo(() => {
     let totalTax = 0;
@@ -79,13 +100,18 @@ export default function CheckoutScreen({ navigation }) {
       const itemSubtotal = item.subtotal || (item.snapshotPrice * item.quantity);
       totalTax += (itemSubtotal * taxRate) / 100;
     });
-    const codFee = (paymentMethod === 'cod') ? Math.round(cartData.subtotal * 0.03) : 0;
+
+    // Logic: Waive shipping if partner is selected
+    const shipping = selectedPartner ? 0 : (cartData.shippingCost || 0);
+    const codFee = (paymentMethod === 'cod' && !selectedPartner) ? Math.round(cartData.subtotal * 0.03) : 0;
+    
     return {
       taxTotal: totalTax,
+      shipping,
       codFee,
-      finalTotal: (cartData.total || 0) + totalTax + codFee
+      finalTotal: (cartData.subtotal || 0) + shipping + totalTax + codFee - (cartData.couponDiscount || 0)
     };
-  }, [cartItems, paymentMethod, cartData]);
+  }, [cartItems, paymentMethod, cartData, selectedPartner]);
 
   const selectAddress = (addr) => {
     setForm(prev => ({
@@ -112,7 +138,11 @@ export default function CheckoutScreen({ navigation }) {
       let orderIdResult = null;
 
       if (paymentMethod === 'online') {
-        const res = await api.post('/cart/initiate-payment', { shippingAddress });
+        // Updated payload to include deliveryPartnerId
+        const res = await api.post('/cart/initiate-payment', { 
+            shippingAddress,
+            deliveryPartnerId: selectedPartner?._id || undefined 
+        });
         const responseData = res.data.data;
 
         const options = {
@@ -136,7 +166,11 @@ export default function CheckoutScreen({ navigation }) {
         orderIdResult = verifyRes.data.data.order._id;
       } else {
         const idempotencyKey = `ord_${Date.now()}`;
-        const response = await api.post('/orders', { shippingAddress, paymentMethod: 'COD' }, {
+        const response = await api.post('/orders', { 
+            shippingAddress, 
+            paymentMethod: 'COD',
+            deliveryPartnerId: selectedPartner?._id || undefined 
+        }, {
           headers: { 'Idempotency-Key': idempotencyKey }
         });
         const order = response.data?.data?.order || response.data?.order;
@@ -157,7 +191,7 @@ export default function CheckoutScreen({ navigation }) {
     } finally { setLoading(false); }
   };
 
-  // --- SUCCESS VIEW ---
+  // --- SUCCESS VIEW (UNCHANGED) ---
   if (isSuccess) {
     return (
       <SafeScreenWrapper backgroundColor="#fff">
@@ -166,7 +200,7 @@ export default function CheckoutScreen({ navigation }) {
              <CheckCircleIcon size={moderateScale(80)} color="#10b981" />
           </View>
           <Text style={styles.successTitle}>Order Placed!</Text>
-          <Text style={styles.successSub}>Thank you for your purchase. Your order details are listed below.</Text>
+          <Text style={styles.successSub}>Thank you for your purchase.</Text>
           
           <View style={styles.successCard}>
             <View style={styles.successRow}>
@@ -179,18 +213,8 @@ export default function CheckoutScreen({ navigation }) {
             </View>
           </View>
 
-          <TouchableOpacity 
-            style={styles.primaryBtn} 
-            onPress={() => navigation.replace('OrderDetail', { orderId: placedOrderId })}
-          >
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.replace('OrderDetail', { orderId: placedOrderId })}>
             <Text style={styles.primaryBtnText}>View Order Details</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.secondaryBtn} 
-           onPress={() => navigation.navigate('MainApp', { screen: 'Products' })}
-          >
-            <Text style={styles.secondaryBtnText}>Continue Shopping</Text>
           </TouchableOpacity>
         </View>
       </SafeScreenWrapper>
@@ -208,6 +232,7 @@ export default function CheckoutScreen({ navigation }) {
         </View>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+          {/* Saved Addresses */}
           {addresses.length > 0 && (
             <>
               <Text style={styles.sectionTitle}>Saved Addresses</Text>
@@ -222,6 +247,7 @@ export default function CheckoutScreen({ navigation }) {
             </>
           )}
 
+          {/* Shipping Form */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Shipping Details</Text>
             <LabeledInput label="First Name" value={form.firstName} onChangeText={(v) => setForm({ ...form, firstName: v })} />
@@ -238,9 +264,7 @@ export default function CheckoutScreen({ navigation }) {
               <View style={{ flex: 1 }}>
                 <Text style={styles.inputLabel}>State</Text>
                 <TouchableOpacity style={styles.dropdownTrigger} onPress={() => setStateModalVisible(true)}>
-                  <Text style={[styles.dropdownText, !form.state && { color: '#94a3b8' }]}>
-                    {form.state || "Select"}
-                  </Text>
+                  <Text style={[styles.dropdownText, !form.state && { color: '#94a3b8' }]}>{form.state || "Select"}</Text>
                   <ChevronDownIcon size={moderateScale(16)} color="#64748b" />
                 </TouchableOpacity>
               </View>
@@ -248,6 +272,33 @@ export default function CheckoutScreen({ navigation }) {
             <LabeledInput label="PIN Code" keyboardType="numeric" value={form.pinCode} onChangeText={(v) => setForm({ ...form, pinCode: v })} />
           </View>
 
+          {/* NEW: SELECT DELIVERY PARTNER SECTION */}
+          <View style={styles.card}>
+            <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: verticalScale(12)}}>
+              <TruckIcon size={moderateScale(20)} color="#1e3a8a" />
+              <Text style={[styles.sectionTitle, {marginBottom: 0, marginLeft: horizontalScale(8)}]}>Select Delivery Partner</Text>
+            </View>
+            
+            <Text style={styles.inputLabel}>Delivery Partner</Text>
+            <TouchableOpacity 
+              style={[styles.dropdownTrigger, selectedPartner && {borderColor: '#1e3a8a'}]} 
+              onPress={() => setPartnerModalVisible(true)}
+            >
+              <Text style={[styles.dropdownText, !selectedPartner && { color: '#94a3b8' }]}>
+                {selectedPartner ? selectedPartner.name : "Select Delivery Partner"}
+              </Text>
+              <ChevronDownIcon size={moderateScale(16)} color="#64748b" />
+            </TouchableOpacity>
+
+            {selectedPartner && (
+              <View style={styles.infoBox}>
+                <InformationCircleIcon size={moderateScale(16)} color="#1e3a8a" />
+                <Text style={styles.infoText}>Shipping charge is waived because delivery partner is selected. Payment mode locked to online.</Text>
+              </View>
+            )}
+          </View>
+
+          {/* PAYMENT METHOD */}
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Payment Method</Text>
             <TouchableOpacity style={[styles.payOption, paymentMethod === 'online' && styles.activePay]} onPress={() => setPaymentMethod('online')}>
@@ -259,21 +310,28 @@ export default function CheckoutScreen({ navigation }) {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.payOption, paymentMethod === 'cod' && styles.activePay, user?.isCodBlocked && styles.disabledPay]}
-              onPress={() => !user?.isCodBlocked && setPaymentMethod('cod')}
+              style={[
+                styles.payOption, 
+                paymentMethod === 'cod' && styles.activePay, 
+                (user?.isCodBlocked || selectedPartner) && styles.disabledPay
+              ]}
+              onPress={() => !(user?.isCodBlocked || selectedPartner) && setPaymentMethod('cod')}
             >
               <View style={styles.payLeft}>
-                <TruckIcon size={moderateScale(20)} color={user?.isCodBlocked ? "#94a3b8" : "#1e3a8a"} />
-                <Text style={[styles.payText, user?.isCodBlocked && { color: "#94a3b8" }]}>Cash on Delivery</Text>
+                <TruckIcon size={moderateScale(20)} color={(user?.isCodBlocked || selectedPartner) ? "#94a3b8" : "#1e3a8a"} />
+                <Text style={[styles.payText, (user?.isCodBlocked || selectedPartner) && { color: "#94a3b8" }]}>Cash on Delivery</Text>
               </View>
-              {paymentMethod === 'cod' && !user?.isCodBlocked && <CheckCircleIcon size={moderateScale(22)} color="#1e3a8a" />}
+              {paymentMethod === 'cod' && !selectedPartner && <CheckCircleIcon size={moderateScale(22)} color="#1e3a8a" />}
             </TouchableOpacity>
+
+            {selectedPartner && (
+              <Text style={styles.warningText}>Online payment is required when delivery partner is selected.</Text>
+            )}
           </View>
 
+          {/* SUMMARY */}
           <View style={styles.summaryBox}>
             <Text style={styles.summaryTitle}>Order Summary</Text>
-
-            {/* PRODUCT-WISE DETAILED VIEW */}
             {cartItems.map((item, index) => (
               <View key={item.productId || index} style={styles.productSummaryItem}>
                 <View style={styles.productSummaryInfo}>
@@ -286,7 +344,6 @@ export default function CheckoutScreen({ navigation }) {
 
             <View style={[styles.divider, { marginVertical: verticalScale(15) }]} />
 
-            {/* BREAKDOWN SECTION */}
             <View style={styles.summaryRow}>
               <Text style={styles.label}>Subtotal</Text>
               <Text style={styles.value}>₹{Number(cartData.subtotal).toLocaleString('en-IN')}</Text>
@@ -294,7 +351,9 @@ export default function CheckoutScreen({ navigation }) {
             
             <View style={styles.summaryRow}>
               <Text style={styles.label}>Shipping</Text>
-              <Text style={styles.value}>₹{Number(cartData.shippingCost || 0).toLocaleString('en-IN')}</Text>
+              <Text style={[styles.value, selectedPartner && {color: '#10b981'}]}>
+                {selectedPartner ? "₹0 (Waived)" : `₹${Number(totals.shipping).toLocaleString('en-IN')}`}
+              </Text>
             </View>
 
             <View style={styles.summaryRow}>
@@ -302,7 +361,7 @@ export default function CheckoutScreen({ navigation }) {
               <Text style={styles.value}>₹{Number(totals.taxTotal).toLocaleString('en-IN')}</Text>
             </View>
 
-            {paymentMethod === 'cod' && (
+            {paymentMethod === 'cod' && !selectedPartner && (
               <View style={styles.summaryRow}>
                 <Text style={styles.label}>COD Fee (3%)</Text>
                 <Text style={styles.value}>₹{Number(totals.codFee).toLocaleString('en-IN')}</Text>
@@ -323,6 +382,33 @@ export default function CheckoutScreen({ navigation }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* DELIVERY PARTNER MODAL */}
+      <Modal visible={partnerModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Delivery Partner</Text>
+              <TouchableOpacity onPress={() => setPartnerModalVisible(false)}><Text style={styles.closeBtn}>Close</Text></TouchableOpacity>
+            </View>
+            <FlatList
+              data={deliveryPartners}
+              keyExtractor={(item) => item._id}
+              renderItem={({ item }) => (
+                <TouchableOpacity style={styles.stateItem} onPress={() => { setSelectedPartner(item); setPartnerModalVisible(false); }}>
+                  <Text style={[styles.stateText, selectedPartner?._id === item._id && { color: '#1e3a8a', fontWeight: '700' }]}>{item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            {selectedPartner && (
+               <TouchableOpacity style={styles.removeBtn} onPress={() => { setSelectedPartner(null); setPartnerModalVisible(false); }}>
+                 <Text style={styles.removeBtnText}>Remove Selection</Text>
+               </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* STATE MODAL (Same as original) */}
       <Modal visible={stateModalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -371,18 +457,18 @@ const styles = StyleSheet.create({
   payOption: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: horizontalScale(16), borderWidth: 1, borderColor: "#e2e8f0", borderRadius: moderateScale(14), marginBottom: verticalScale(10) },
   payLeft: { flexDirection: "row", alignItems: "center", gap: 10 },
   activePay: { borderColor: "#1e3a8a", backgroundColor: "#eff6ff" },
-  disabledPay: { backgroundColor: "#f1f5f9" },
+  disabledPay: { backgroundColor: "#f1f5f9", opacity: 0.6 },
   payText: { fontSize: moderateScale(15), fontWeight: "600", color: '#0f172a' },
+  warningText: { color: '#ef4444', fontSize: moderateScale(12), marginTop: verticalScale(4), fontWeight: '500' },
+  infoBox: { flexDirection: 'row', backgroundColor: '#eff6ff', padding: moderateScale(12), borderRadius: moderateScale(10), marginTop: verticalScale(12), alignItems: 'center' },
+  infoText: { flex: 1, fontSize: moderateScale(12), color: '#1e3a8a', marginLeft: horizontalScale(8), lineHeight: moderateScale(18) },
   summaryBox: { backgroundColor: "#fff", padding: horizontalScale(20), borderRadius: moderateScale(20), marginBottom: verticalScale(30), elevation: 2 },
   summaryTitle: { fontSize: moderateScale(18), fontWeight: "800", marginBottom: verticalScale(15), color: '#0f172a' },
-  
-  // DETAILED PRODUCT STYLES
   productSummaryItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: verticalScale(10) },
   productSummaryInfo: { flex: 1, marginRight: horizontalScale(10) },
   summaryProdName: { fontSize: moderateScale(14), fontWeight: '600', color: '#334155' },
   summaryProdQty: { fontSize: moderateScale(12), color: '#64748b', marginTop: verticalScale(2) },
   summaryProdTotal: { fontSize: moderateScale(14), fontWeight: '700', color: '#0f172a' },
-
   summaryRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: verticalScale(8) },
   divider: { height: 1, backgroundColor: '#eee', marginVertical: verticalScale(10) },
   label: { color: "#64748b", fontSize: moderateScale(14) },
@@ -392,24 +478,22 @@ const styles = StyleSheet.create({
   checkoutBtn: { backgroundColor: "#1e3a8a", padding: verticalScale(18), borderRadius: moderateScale(14), alignItems: "center", marginTop: verticalScale(15) },
   checkoutText: { color: "#fff", fontSize: moderateScale(16), fontWeight: "800" },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: moderateScale(24), borderTopRightRadius: moderateScale(24), height: '70%', padding: moderateScale(20) },
+  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: moderateScale(24), borderTopRightRadius: moderateScale(24), height: '60%', padding: moderateScale(20) },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: verticalScale(20) },
   modalTitle: { fontSize: moderateScale(18), fontWeight: '800', color: '#0f172a' },
   closeBtn: { color: '#dc2626', fontWeight: '700', fontSize: moderateScale(14) },
   stateItem: { paddingVertical: verticalScale(15), borderBottomWidth: 1, borderBottomColor: '#f1f5f9' },
   stateText: { fontSize: moderateScale(16), color: '#334155' },
-
-  // Success Screen Styles
+  removeBtn: { marginTop: verticalScale(10), padding: verticalScale(12), alignItems: 'center', borderWidth: 1, borderColor: '#ef4444', borderRadius: moderateScale(10) },
+  removeBtnText: { color: '#ef4444', fontWeight: '700' },
   successContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: horizontalScale(30), backgroundColor: '#fff' },
   successIconBadge: { width: moderateScale(120), height: moderateScale(120), borderRadius: moderateScale(60), backgroundColor: '#ecfdf5', alignItems: 'center', justifyContent: 'center', marginBottom: verticalScale(20) },
   successTitle: { fontSize: moderateScale(28), fontWeight: '900', color: '#0f172a', marginBottom: verticalScale(10) },
-  successSub: { fontSize: moderateScale(16), color: '#64748b', textAlign: 'center', marginBottom: verticalScale(30), lineHeight: moderateScale(22) },
+  successSub: { fontSize: moderateScale(16), color: '#64748b', textAlign: 'center', marginBottom: verticalScale(30) },
   successCard: { width: '100%', backgroundColor: '#f8fafc', borderRadius: moderateScale(20), padding: moderateScale(20), marginBottom: verticalScale(30), borderWidth: 1, borderColor: '#e2e8f0' },
   successRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: verticalScale(12) },
-  successLabel: { color: '#64748b', fontSize: moderateScale(14), fontWeight: '500' },
+  successLabel: { color: '#64748b', fontSize: moderateScale(14) },
   successValue: { color: '#0f172a', fontSize: moderateScale(14), fontWeight: '700' },
-  primaryBtn: { backgroundColor: '#1e3a8a', width: '100%', padding: verticalScale(18), borderRadius: moderateScale(16), alignItems: 'center', marginBottom: verticalScale(12), elevation: 4 },
-  primaryBtnText: { color: '#fff', fontSize: moderateScale(16), fontWeight: '800' },
-  secondaryBtn: { width: '100%', padding: verticalScale(18), borderRadius: moderateScale(16), alignItems: 'center', borderWidth: 1, borderColor: '#e2e8f0' },
-  secondaryBtnText: { color: '#334155', fontSize: moderateScale(16), fontWeight: '700' }
+  primaryBtn: { backgroundColor: '#1e3a8a', width: '100%', padding: verticalScale(18), borderRadius: moderateScale(16), alignItems: 'center' },
+  primaryBtnText: { color: '#fff', fontSize: moderateScale(16), fontWeight: '800' }
 });
