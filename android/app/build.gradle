@@ -82,8 +82,8 @@ android {
         applicationId "com.umax.autospare"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 4  // <--- CHANGED TO 2 (Required for Play Store updates)
-        versionName "1.2" // <--- CHANGED TO 1.1
+        versionCode 7  // <--- CHANGED TO 2 (Required for Play Store updates)
+        versionName "1.5" // <--- CHANGED TO 1.1
        
     }
 
